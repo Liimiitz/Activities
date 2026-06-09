@@ -1,4 +1,4 @@
-import { ActivityType, Assets, getTimestamps, timestampFromFormat } from 'premid'
+import { ActivityType, Assets, getTimestamps } from 'premid'
 
 const presence = new Presence({
   clientId: '705139844883677224',
@@ -18,7 +18,10 @@ enum ActivityAssets {
 presence.on('UpdateData', async () => {
   const { pathname } = document.location
 
-  const usePresenceName = await presence.getSetting<boolean>('usePresenceName')
+  const [usePresenceName, showCover] = await Promise.all([
+    presence.getSetting<boolean>('usePresenceName'),
+    presence.getSetting<boolean>('cover'),
+  ])
 
   const presenceData: PresenceData = {
     largeImageKey: ActivityAssets.Logo,
@@ -26,19 +29,23 @@ presence.on('UpdateData', async () => {
     type: ActivityType.Watching,
   }
 
-  const video = document.querySelector<HTMLVideoElement>('#dv-web-player video')
+  const body = document.querySelector('body')
+  const bodyStyle = window.getComputedStyle(body!)
+
+  const video = document.querySelector<HTMLVideoElement>('div[id^=dv-web-player] video[src]')
+    || document.querySelector<HTMLVideoElement>('#dv-web-player video')
     || document.querySelector<HTMLVideoElement>('#dv-web-player .atvwebplayersdk-video-surface video')
     || document.querySelector<HTMLVideoElement>('video')
 
-  const title = document.querySelector('.atvwebplayersdk-player-container .fpqiyer .ffszj3z .f124tp54 h1')?.textContent || document.querySelector<HTMLImageElement>('.DVWebNode-detail-atf-wrapper picture img')?.alt
+  const title = document.querySelector('.atvwebplayersdk-player-container .fpqiyer .ffszj3z .f124tp54 h1')?.textContent || document.querySelector<HTMLImageElement>('.DVWebNode-detail-atf-wrapper picture img')?.alt || document.querySelector('.atvwebplayersdk-title-text')?.textContent || document.querySelector('h1[data-automation-id="title"]')?.textContent
 
-  const title2 = document.querySelector('.DVWebNode-detail-atf-wrapper .BaLbyy h1')?.textContent || document.querySelector<HTMLImageElement>('.DVWebNode-detail-atf-wrapper picture img')?.alt
+  const title2 = document.querySelector('.DVWebNode-detail-atf-wrapper .BaLbyy h1')?.textContent || document.querySelector<HTMLImageElement>('.DVWebNode-detail-atf-wrapper picture img')?.alt || document.querySelector('.atvwebplayersdk-title-text')?.textContent || document.querySelector('h1[data-automation-id="title"]')?.textContent
 
-  const bannerImg = document.querySelector<HTMLImageElement>('.BNTHjF img')?.src
+  const bannerImg = document.querySelector<HTMLImageElement>('main div[data-automation-id="hero-background"] img')?.src
 
-  const subtitle = document.querySelector<HTMLElement>('.atvwebplayersdk-subtitle-text')
+  const subtitle = document.querySelector<HTMLElement>('.atvwebplayersdk-episode-info') || document.querySelector<HTMLElement>('.atvwebplayersdk-subtitle-text')
 
-  if (video && !video.className.includes('tst') && title) {
+  if (video && !video.className.includes('tst') && title && bodyStyle.overflow === 'hidden') {
     const contentTitle = title
     if (usePresenceName) {
       presenceData.name = contentTitle
@@ -49,7 +56,7 @@ presence.on('UpdateData', async () => {
       presenceData.state = subtitle.textContent
     }
 
-    if (bannerImg) {
+    if (bannerImg && showCover) {
       presenceData.largeImageKey = bannerImg
     }
 
@@ -59,21 +66,12 @@ presence.on('UpdateData', async () => {
       delete presenceData.startTimestamp
     }
     else {
-      const [unformattedCurrentTime, unformattedDuration] = document
-        .querySelector('.atvwebplayersdk-timeindicator-text')
-        ?.textContent
-        ?.trim()
-        .split(' / ') ?? [];
-      [presenceData.startTimestamp, presenceData.endTimestamp] = getTimestamps(
-        timestampFromFormat(unformattedCurrentTime ?? ''),
-        timestampFromFormat(unformattedDuration ?? '')
-        + timestampFromFormat(unformattedCurrentTime ?? ''),
-      )
+      [presenceData.startTimestamp, presenceData.endTimestamp] = getTimestamps(video.currentTime, video.duration)
       presenceData.smallImageKey = Assets.Play
       presenceData.smallImageText = (await strings).playing
     }
   }
-  else if (video && !video.className.includes('tst') && title2) {
+  else if (video && !video.className.includes('tst') && title2 && bodyStyle.overflow === 'hidden') {
     const contentTitle = title2
 
     if (usePresenceName) {
@@ -85,7 +83,7 @@ presence.on('UpdateData', async () => {
       presenceData.state = subtitle.textContent
     }
 
-    if (bannerImg) {
+    if (bannerImg && showCover) {
       presenceData.largeImageKey = bannerImg
     }
 
@@ -95,24 +93,22 @@ presence.on('UpdateData', async () => {
       delete presenceData.startTimestamp
     }
     else {
-      const [unformattedCurrentTime, unformattedDuration] = document
-        .querySelector('.atvwebplayersdk-timeindicator-text')
-        ?.textContent
-        ?.trim()
-        .split(' / ') ?? [];
-      [presenceData.startTimestamp, presenceData.endTimestamp] = getTimestamps(
-        timestampFromFormat(unformattedCurrentTime ?? ''),
-        timestampFromFormat(unformattedDuration ?? '')
-        + timestampFromFormat(unformattedCurrentTime ?? ''),
-      )
+      [presenceData.startTimestamp, presenceData.endTimestamp] = getTimestamps(video.currentTime, video.duration)
       presenceData.smallImageKey = Assets.Play
       presenceData.smallImageText = (await strings).playing
     }
   }
-
-  if (pathname.includes('/storefront')) {
+  else if (pathname.includes('/storefront') || pathname === '/') {
     presenceData.details = 'Viewing Home'
     presenceData.state = 'Browsing...'
+  }
+  else if (pathname.includes('/detail')) {
+    presenceData.details = 'Viewing page for:'
+    presenceData.state = title || title2 || 'Prime Video'
+
+    if (bannerImg && showCover) {
+      presenceData.largeImageKey = bannerImg
+    }
   }
   else if (pathname.includes('/movie')) {
     presenceData.details = 'Viewing Movies'
@@ -132,6 +128,10 @@ presence.on('UpdateData', async () => {
   }
   else if (pathname.includes('/kids/')) {
     presenceData.details = 'Viewing Movies for kids'
+    presenceData.state = 'Browsing...'
+  }
+  else if (pathname.includes('/livetv')) {
+    presenceData.details = 'Viewing Live TV'
     presenceData.state = 'Browsing...'
   }
   else if (pathname.includes('/search/') && document.querySelector('.av-refine-bar-summaries')) {
